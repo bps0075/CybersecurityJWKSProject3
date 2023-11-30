@@ -1,5 +1,6 @@
 // Brandon Sharp, CSCS 3550
-// Project 2: Extending the JWKS Server from the basic Restful JWKS Server
+// Project 3: Bulking the extended JWKS Server from the Restful JWKS Server
+// Note: When using SQLite make sure to fix the issues in Project Structure if any
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -38,12 +39,19 @@ import java.time.LocalTime;
 import java.security.*;
 import java.security.interfaces.RSAPublicKey;
 import java.security.interfaces.RSAPrivateKey;
-import java.util.Base64;
 import java.time.Instant;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.jose4j.jwk.PublicJsonWebKey;
+
+// Project 3 (P3) imports
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
 
 public class JWKSServer {
     //private static final String SECRET_KEY = "your-secret-key"; // Secret key
@@ -208,7 +216,7 @@ public class JWKSServer {
                 PreparedStatement preparedStatement = c.prepareStatement(selectQuery); // Prepares for the statement to be executed
                 String x = Integer.toString((int) (System.currentTimeMillis() / 1000)); // x is the time as a string
                 preparedStatement.setString(1, x);
-                ResultSet resultSet = preparedStatement.executeQuery(); // Executes the select statement
+                ResultSet resultSet = preparedStatement.executeQuery(selectQuery); // Executes the select statement
 
                 if (resultSet.next()) {
                     String keyJson = resultSet.getString("key");

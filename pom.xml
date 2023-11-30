@@ -11,11 +11,11 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
-    <name>Extended JWKS Server</name>
-    <description>This helps with extending the restful JWKS server</description>
+    <name>Bulked JWKS Server</name>
+    <description>This helps with bulking the restful JWKS server</description>
 
     <groupId>net.codejava</groupId>
-    <artifactId>CSCE3550Project2</artifactId>
+    <artifactId>CSCE3550Project3</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <properties>
@@ -61,6 +61,11 @@
             <version>2.12.7.1</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.43.2.2</version>
+        </dependency>
         <!-- <dependency>
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
