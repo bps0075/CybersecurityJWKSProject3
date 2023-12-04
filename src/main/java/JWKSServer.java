@@ -4,7 +4,10 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import org.jose4j.jwk.JsonWebKeySet;
@@ -60,6 +63,8 @@ public class JWKSServer {
     private static Connection c = null; // Private variable for the P2 database connection
     private static Statement statement = null; // This will only be used for needed statements
     private static String GoodExpiry = ""; // Expiry
+
+    private static String envKey = "NOT_MY_KEY"; //P3
 
     public static void main(String[] args) throws Exception {
         // Generates an RSA key pair, which will be used for signing and verification of the JWT and wrapped in a JWK
@@ -184,6 +189,48 @@ public class JWKSServer {
             OutputStream os = h.getResponseBody();
             os.write(jwt.getBytes());
             os.close(); // Closes the output stream so that it does not get in the way
+
+            //P3 code below
+            boolean isAuthenticated = AuthenticateUser(); // Example authentication logic
+            CreateUsersTable(c); //P3
+            CreateAuthLogsTable(c);//P3
+            if (isAuthenticated) {
+                // Log authentication details into the 'auth_logs' table
+                LogAuthenticationDetails(h.getRemoteAddress().getHostString(), GetUserId(), c); // Pass necessary details
+            }
+            // Return appropriate response based on authentication status
+            String response = isAuthenticated ? "Authentication successful!" : "Authentication failed!";
+            h.sendResponseHeaders(isAuthenticated ? 200 : 401, response.getBytes().length);
+            os = h.getResponseBody();
+            os.write(response.getBytes());
+            os.close();
+        }
+        private boolean AuthenticateUser() {
+            // Implement your authentication logic
+            // Return true if authentication is successful, otherwise false
+            return true; // Example: Always returning true for demonstration purposes
+        }
+
+        private int GetUserId() {
+            // Retrieve user ID after successful authentication
+            // Return the user ID of the authenticated user
+            return 123; // Example: Replace with the actual user ID
+        }
+
+        private void LogAuthenticationDetails(String requestIP, int userId, Connection c) {
+            try {
+                // Prepare and execute SQL query to insert authentication details into the 'auth_logs' table
+                if (c != null) {
+                    String insertQuery = "INSERT INTO auth_logs (request_ip, user_id) VALUES (?, ?)";
+                    PreparedStatement preparedStatement = c.prepareStatement(insertQuery);
+                    preparedStatement.setString(1, requestIP);
+                    preparedStatement.setInt(2, userId);
+                    preparedStatement.executeUpdate();
+                    preparedStatement.close();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -230,5 +277,173 @@ public class JWKSServer {
             }
         }
         return null;
+    }
+
+    //P3 classes and methods below
+    public class AESEncryption{ //P3 class
+        private static String EncryptAES(String privateKey, String secretKey) throws Exception {
+            //AES encryption of private keys
+            Cipher cipher = Cipher.getInstance("AES");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(), "AES");
+            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+            byte[] encryptedBytes = cipher.doFinal(privateKey.getBytes());
+            return Base64.getEncoder().encodeToString(encryptedBytes);
+        }
+        private static String DecryptAES(String encryptedPrivateKey, String secretKey) throws Exception {
+            //AES decryption of private keys
+            Cipher cipher = Cipher.getInstance("AES");
+            SecretKeySpec secretKeySpec = new SecretKeySpec(secretKey.getBytes(), "AES");
+            cipher.init(Cipher.DECRYPT_MODE, secretKeySpec);
+            byte[] encryptedBytes = Base64.getDecoder().decode(encryptedPrivateKey);
+            byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
+            return new String(decryptedBytes);
+        }
+    }
+
+    private static void CreateUsersTable(Connection c) {
+        //Creates a users table in the database with appropriate fields to store information and hashed passwords
+        if (c != null) { //If connection variable is not null
+            try {
+                Statement statement = c.createStatement();
+                String createTableQuery = "CREATE TABLE IF NOT EXISTS users(\n" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
+                    "username TEXT NOT NULL UNIQUE,\n" +
+                    "password_hash TEXT NOT NULL,\n" +
+                    "email TEXT UNIQUE,\n" +
+                    "date_registered TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n" +
+                    "last_login TIMESTAMP\n" +
+                    ")";
+                statement.executeUpdate(createTableQuery);
+                statement.close();
+                System.out.println("Users table created (if not exists).");
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    private static void CreateAuthLogsTable(Connection c) {
+        //This database table is created to log authentication requests with schema
+        if (c != null) { //If connection variable is not null
+            try {
+                Statement statement = c.createStatement();
+                String createLogsTable = "CREATE TABLE IF NOT EXISTS auth_logs(\n" +
+                    "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
+                    "    request_ip TEXT NOT NULL,\n" +
+                    "    request_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n" +
+                    "    user_id INTEGER,  \n" +
+                    "    FOREIGN KEY(user_id) REFERENCES users(id)\n" +
+                    ");";
+                statement.executeUpdate(createLogsTable);
+                statement.close();
+                System.out.println("Auth logs table created (if not exists).");
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public class RegisterHandler implements HttpHandler { //P3
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            // Implement the logic for user registration here
+            if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                //Parses the request body
+                InputStreamReader isr = new InputStreamReader(exchange.getRequestBody(), "UTF-8");
+                BufferedReader br = new BufferedReader(isr);
+                StringBuilder requestBody = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    requestBody.append(line);
+                }
+                //Extracts user details (assuming JSON format)
+                //Example JSON: {"username": "user123", "password": "pass123", "email": "user@example.com"}
+                String userData = requestBody.toString();
+                //Parses JSON and extract user details (JSON library like Gson or Jackson)
+
+                //Performs input validation to check if required fields are present and valid
+                if (userData != null) {
+                    // Perform user registration into the database
+                    boolean registrationSuccess = RegisterUserIntoDatabase(userData, c);
+                    if (registrationSuccess) {
+                        String response = "User registered successfully!";
+                        exchange.sendResponseHeaders(200, response.getBytes().length);
+                        OutputStream os = exchange.getResponseBody();
+                        os.write(response.getBytes());
+                        os.close();
+                    } else {
+                        exchange.sendResponseHeaders(500, -1); // Internal Server Error
+                    }
+                } else {
+                    exchange.sendResponseHeaders(400, -1); // Bad Request
+                }
+            }
+//              catch (SQLException e) {
+//                e.printStackTrace();
+//                exchange.sendResponseHeaders(500, -1); // Internal Server Error
+//                // Perform user registration into the database
+//                // Return appropriate response
+//                String response = "User registered successfully!";
+//                exchange.sendResponseHeaders(200, response.getBytes().length);
+//                OutputStream os = exchange.getResponseBody();
+//                os.write(response.getBytes());
+//                os.close();
+            else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
+        }
+        private boolean RegisterUserIntoDatabase(String userData, Connection c) {
+            try {
+                // Extracts user details from userData and perform necessary validations
+                // Example: Use a JSON library like Gson or Jackson to parse JSON data
+
+                // Prepare and execute SQL query to insert user details into the 'users' table
+                if (c != null) {
+                    String insertQuery = "INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)";
+                    PreparedStatement preparedStatement = c.prepareStatement(insertQuery);
+                    // Set parameters based on extracted user details
+                    // Example: preparedStatement.setString(1, extractedUsername);
+                    //           preparedStatement.setString(2, extractedPasswordHash);
+                    //           preparedStatement.setString(3, extractedEmail);
+                    // Execute the SQL query
+                    int rowsAffected = preparedStatement.executeUpdate();
+                    preparedStatement.close();
+                    return rowsAffected > 0; //If registration successful, return true
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+            return false; //Registration failed
+        }
+    }
+
+    private static void RegisterUser() { //not coding in
+        //Registers the user and stores the user data
+
+    }
+
+    private static void AuthUser() { //not coding in
+        //Authenticates the user and does log authentication
+
+    }
+
+    public class RateLimiter { //Extra credit
+        private final ConcurrentHashMap<String, AtomicInteger> requestCounts = new ConcurrentHashMap<>();
+
+        public boolean allowRequest(String ipAddress, int maxRequests, int windowInSeconds) {
+            long currentTime = System.currentTimeMillis() / 1000;
+            AtomicInteger counter = requestCounts.computeIfAbsent(ipAddress, k -> new AtomicInteger());
+
+            synchronized (counter) {counter.getAndUpdate(value -> {
+                    if (currentTime - value > windowInSeconds) {
+                        return 1;
+                    } else {
+                        return value + 1;
+                    }});
+                if (counter.get() > maxRequests) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 }
